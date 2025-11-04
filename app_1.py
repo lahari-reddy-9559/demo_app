@@ -2,9 +2,9 @@
 Dynamic AI Text Analysis - Streamlit App (single-file)
 
 Features:
-- Accepts either pasted text or a .txt file upload for analysis.
+- Accepts pasted text or a .txt file upload for analysis.
 - Sentence-level sentiment labeling (VADER when available, fallback heuristic).
-- Displays a colorful, emoji-enhanced UI.
+- Neutral, background-friendly color palette (suitable for light/white backgrounds).
 - Shows a bar chart of positive / neutral / negative sentence counts.
 - Generates a WordCloud of the input text.
 - Produces an extractive summary (rule-based) and, if available, an abstractive (generative) summary
@@ -17,12 +17,12 @@ Run:
 2. streamlit run app.py
 """
 
-# --- Safety: ensure headless matplotlib backend BEFORE importing matplotlib or other libs that import it
+# Safety: ensure headless matplotlib backend BEFORE importing matplotlib or other libs that import it
 import os
 os.environ["MPLBACKEND"] = "Agg"
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
-# --- Standard libs
+# Standard libs
 import re
 import math
 import heapq
@@ -30,16 +30,15 @@ import warnings
 from typing import List
 warnings.filterwarnings("ignore")
 
-# --- Streamlit + plotting
+# Streamlit + plotting
 import streamlit as st
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 import io
 
-# --- NLP
+# NLP
 import nltk
 from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
 
 # Attempt to import VADER (NLTK sentiment analyzer)
 try:
@@ -48,7 +47,7 @@ try:
 except Exception:
     _VADER_POSSIBLE = False
 
-# --- Lazy transformers loader (for abstractive summarization)
+# Lazy transformers loader (for abstractive summarization)
 _TRANSFORMERS_AVAILABLE = False
 _TRANSFORMERS_IMPORT_ERROR = None
 
@@ -80,7 +79,7 @@ def try_enable_transformers():
             return False, f"{err_str}\n\n{hint}"
         return False, err_str
 
-# --- Ensure NLTK resources
+# Ensure NLTK resources
 nltk_packages = ["punkt", "wordnet", "omw-1.4", "vader_lexicon", "stopwords"]
 for pkg in nltk_packages:
     try:
@@ -114,7 +113,7 @@ else:
     SIA = None
     _VADER_AVAILABLE = False
 
-# --- Text utilities
+# Text utilities
 _SENT_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 def split_sentences(text: str) -> List[str]:
     sents = [s.strip() for s in _SENT_SPLIT_RE.split(text) if s.strip()]
@@ -132,7 +131,7 @@ def clean_text(text: str) -> str:
     toks = [lemmatizer.lemmatize(w) for w in toks]
     return " ".join(toks)
 
-# --- Extractive summarizer (rule-based)
+# Extractive summarizer (rule-based)
 def extractive_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max_sentences: int = 6) -> str:
     sentences = split_sentences(text)
     if len(sentences) <= 1:
@@ -151,12 +150,12 @@ def extractive_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max
     reduced = " ".join([s for (_score, _i, s) in top_sorted])
     return reduced
 
-# --- Abstractive summarizer (lazy)
+# Abstractive summarizer (lazy)
 def make_abstractive_pipeline(model_name: str = "t5-small"):
     avail, err = try_enable_transformers()
     if not avail:
         raise RuntimeError(err or "transformers/torch not available")
-    from transformers import pipeline  # local import to reduce startup overhead
+    from transformers import pipeline  # local import
     import torch as _torch
     device = 0 if _torch.cuda.is_available() else -1
     return pipeline("summarization", model=model_name, tokenizer=model_name, device=device)
@@ -206,7 +205,7 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
         return out[0].get("summary_text", "").strip()
     return str(out)
 
-# --- Sentence-level sentiment labeling
+# Sentence-level sentiment labeling
 def sentiment_label_for_sentence(sent: str) -> str:
     """
     Returns one of 'positive', 'neutral', 'negative'.
@@ -233,91 +232,91 @@ def sentiment_label_for_sentence(sent: str) -> str:
             return "negative"
         return "neutral"
 
-# --- Streamlit UI (colorful, emoji-enhanced)
-st.set_page_config(page_title="✨ Dynamic AI Text Analysis", layout="centered")
-st.header("✨ Dynamic AI Text Analysis  — Sentiment, WordCloud & Summaries")
+# Streamlit UI (neutral, background-friendly palette)
+st.set_page_config(page_title="Dynamic AI Text Analysis", layout="centered")
+st.header("Dynamic AI Text Analysis — Sentiment, Word Cloud & Summaries")
 st.markdown(
-    "Paste text or upload a .txt file. The app shows sentence-level sentiment (positive / neutral / negative), "
-    "a WordCloud, an extractive summary and an optional abstractive (generative) summary. 🎯"
+    "Paste text or upload a plain text (.txt) file. The app will:\n\n"
+    "- Split input into sentences and label each sentence as positive / neutral / negative.\n"
+    "- Display a single bar chart with counts of positive, neutral, and negative sentences.\n"
+    "- Generate a WordCloud of the input text.\n"
+    "- Provide an extractive summary and an optional abstractive (generative) summary.\n\n"
+    "No model-training visuals or backend diagnostics are shown."
 )
 
 # Input: text area or upload text file
-st.subheader("Input 📥")
+st.subheader("Input")
 col_a, col_b = st.columns([3,1])
 with col_a:
     text_input = st.text_area("Paste your text here", height=260, placeholder="Type or paste text to analyze...")
 with col_b:
-    uploaded = st.file_uploader("Or upload a .txt file", type=["txt"])
+    uploaded = st.file_uploader("Or upload a plain .txt file", type=["txt"])
     st.markdown(" ")
-    st.markdown(" ")
-    st.info("No CSV required — just plain text.")
+    st.info("Provide text only; no CSV files are required.")
 
 # If file uploaded, read it and populate text_input
 if uploaded is not None:
     try:
         raw = uploaded.read()
-        # attempt utf-8 then fallback
         try:
             file_text = raw.decode("utf-8")
         except Exception:
             file_text = raw.decode("latin-1")
         text_input = file_text
-        st.success("Loaded text file ✅")
+        st.success("Loaded text file")
     except Exception as e:
         st.error(f"Failed to read uploaded file: {e}")
 
 # Controls
-st.subheader("Options ⚙️")
-col1, col2, col3 = st.columns(3)
+st.subheader("Options")
+col1, col2 = st.columns(2)
 with col1:
     ratio = st.slider("Extractive summary ratio", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
 with col2:
-    abstractive_opt = st.checkbox("Generate abstractive summary (if available) 🤖", value=False)
-with col3:
-    abstr_model = st.selectbox("Abstractive model", ["t5-small", "t5-base"], index=0) if abstractive_opt else st.empty()
+    abstractive_opt = st.checkbox("Generate abstractive summary if available", value=False)
+    if abstractive_opt:
+        abstr_model = st.selectbox("Abstractive model", ["t5-small", "t5-base"], index=0)
+    else:
+        abstr_model = None
 
-# Run button
-run = st.button("Analyze 🔍")
+run = st.button("Analyze")
 
-# Helper: small decorative CSS to make UI colorful (keeps accessibility in mind)
+# Subtle, neutral CSS to keep UI readable on light/white backgrounds
 st.markdown(
     """
     <style>
-    .stApp { background: linear-gradient(135deg, #f6f9ff 0%, #ffffff 100%); }
-    .big-emoji { font-size: 1.2rem; }
+    .stApp { background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%); }
+    .result-box { padding: 8px 12px; border-radius: 6px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.04); }
     </style>
     """, unsafe_allow_html=True
 )
 
 if run:
     if not text_input or not text_input.strip():
-        st.error("Please paste text or upload a .txt file to analyze. 📄")
+        st.error("Please paste text or upload a .txt file to analyze.")
     else:
-        with st.spinner("Analyzing text... ✨"):
-            # Prepare sentences and labels
+        with st.spinner("Analyzing text..."):
             sentences = split_sentences(text_input)
-            labels = []
-            for s in sentences:
-                lab = sentiment_label_for_sentence(s)
-                labels.append(lab)
+            labels = [sentiment_label_for_sentence(s) for s in sentences]
             counts = {"positive": 0, "neutral": 0, "negative": 0}
-            for l in labels:
-                counts[l] = counts.get(l, 0) + 1
+            for lab in labels:
+                counts[lab] = counts.get(lab, 0) + 1
 
             # WordCloud generation
             wc_text = clean_text(text_input)
             if not wc_text.strip():
                 wc_text = "empty"
-            wc = WordCloud(width=800, height=400, background_color="white", colormap="tab10").generate(wc_text)
+            wc = WordCloud(width=800, height=400, background_color="white", colormap="viridis").generate(wc_text)
 
         # Display results
-        st.subheader("Sentiment overview 📊")
+        st.subheader("Sentiment overview")
         st.markdown("Sentence-level counts:")
-        # Bar chart using matplotlib
+
+        # Bar chart using matplotlib with neutral, accessible colors
         fig, ax = plt.subplots(figsize=(6,3))
         categories = ["positive", "neutral", "negative"]
         values = [counts.get(c, 0) for c in categories]
-        colors = ["#2ca02c", "#7f7f7f", "#d62728"]  # green, gray, red (colorblind-aware)
+        colors = ["#2b8cbe", "#6c757d", "#f03b20"]  # blue, neutral gray, red-orange (background-friendly)
         bars = ax.bar(categories, values, color=colors, edgecolor="black")
         ax.set_ylim(0, max(1, max(values) + 1))
         ax.set_ylabel("Number of sentences")
@@ -326,8 +325,7 @@ if run:
             ax.text(i, v + 0.05, str(v), ha='center', va='bottom', fontsize=10)
         st.pyplot(fig)
 
-        st.subheader("Word Cloud ☁️")
-        # Render WordCloud to image buffer and show
+        st.subheader("Word Cloud")
         img_buf = io.BytesIO()
         plt.figure(figsize=(10,4))
         plt.imshow(wc, interpolation='bilinear')
@@ -338,31 +336,30 @@ if run:
         img_buf.seek(0)
         st.image(img_buf, use_column_width=True)
 
-        st.subheader("Summaries 📝")
+        st.subheader("Summaries")
         # Extractive summary
         try:
             ext = extractive_reduce(text_input, ratio=ratio)
-            st.markdown("**Extractive summary (rule-based)**")
+            st.markdown("**Extractive summary**")
             st.write(ext)
         except Exception as e:
             st.error(f"Extractive summary failed: {e}")
 
         # Abstractive summary (if requested)
         if abstractive_opt:
-            st.markdown("**Abstractive (generative) summary**")
+            st.markdown("**Abstractive summary**")
             avail, err = try_enable_transformers()
             if not avail:
                 st.error("Abstractive summarization unavailable: " + (err or "transformers/torch not installed."))
-                st.info("To enable abstractive summaries, install dependencies (example):\n\n"
-                        "pip install transformers torch sentencepiece tf-keras\n\nThen restart the app.")
+                st.info("To enable abstractive summaries, install: pip install transformers torch sentencepiece tf-keras")
             else:
-                with st.spinner("Generating abstractive summary (may take time)… 🤖"):
+                with st.spinner("Generating abstractive summary (may take time)..."):
                     try:
                         abstr = abstractive_summarize_text(text_input, model_name=abstr_model, max_length=120, min_length=20, use_reduced=True)
                         st.write(abstr)
                     except Exception as e:
                         st.error(f"Abstractive summarization failed at runtime: {e}")
-                        st.info("If error mentions Keras 3 compatibility, run: pip install tf-keras and restart the app.")
+                        st.info("If the error mentions Keras 3 compatibility, run: pip install tf-keras and restart the app.")
 
 st.markdown("---")
-st.caption("Designed to be colorful and emoji-friendly while keeping results focused and minimal. 💡")
+st.caption("Enjoy the serives your feedback is worth please visit our page")
