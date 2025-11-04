@@ -5,23 +5,25 @@ Place this file in a project folder and run:
     pip install -r requirements.txt
     streamlit run app.py
 
-This version forces a headless matplotlib backend (Agg) and reduces TF log spam
-BEFORE importing matplotlib so it runs safely on headless servers (Streamlit Cloud, Docker, CI).
-It includes:
+This app uses a headless-safe matplotlib backend and provides:
  - CSV upload (expects a 'text' column) or demo dataset
  - Text cleaning (NLTK lemmatization + stopwords)
  - TF-IDF + LDA topic modeling with word clouds and bar charts
  - Extractive summarization and optional abstractive (if transformers installed)
  - Optional basic sentiment classifiers (SGD, RandomForest, optional TF NN)
  - Export topic summary CSV
+
+Notes:
+ - Abstractive summarization requires transformers/torch/sentencepiece and will be skipped if not installed.
+ - TensorFlow is optional for the small NN.
 """
 
-# SAFETY: Force headless matplotlib backend and reduce TF logs BEFORE any matplotlib import
+# SAFETY: Force headless matplotlib backend and reduce TF logs BEFORE importing matplotlib
 import os
 os.environ["MPLBACKEND"] = "Agg"            # safe, headless backend
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # limit TensorFlow logs
 
-# Standard / visualization / app
+# Standard libs
 import io
 import re
 import math
@@ -30,6 +32,7 @@ import warnings
 from typing import List
 warnings.filterwarnings("ignore")
 
+# App and plotting
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -430,6 +433,6 @@ st.markdown("---")
 st.caption("Designed with light, color-blind-friendly palettes where possible.")
 
 if st.checkbox("Show recommended pip install line"):
-    st.code("""pip install streamlit pandas numpy scikit-learn nltk matplotlib seaborn wordcloud gensim
+    st.code("""pip install streamlit pandas numpy scikit-learn nltk matplotlib seaborn wordcloud gensim httpx
 # Optional (for abstractive summaries & NN):
 pip install transformers torch sentencepiece tensorflow rouge-score""")
