@@ -1,15 +1,19 @@
-streamlit>=1.20
-pandas
-numpy
-scikit-learn
-nltk
-matplotlib
-seaborn
-wordcloud
-gensim
-tensorflow>=2.6  # optional, only if you want NN training and have compatible hardware
-transformers>=4.0  # optional, for abstractive summarization
-torch>=1.8  # required by transformers for many models
-sentencepiece  # required by some transformer models
-rouge-score
-scikit-image
+streamlit>=1.10
+nltk>=3.8
+matplotlib>=3.5
+wordcloud>=1.8
+# core utilities
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.2
+httpx>=0.24
+
+# Compatibility helper for Keras 3 + Transformers TF usage (lightweight)
+tf-keras>=2.10
+
+# Optional heavy dependencies — install only if you need abstractive (transformers) summaries:
+# transformers>=4.30
+# torch>=2.0
+# sentencepiece>=0.1.97
+# tensorflow>=2.10
+# rouge-score
