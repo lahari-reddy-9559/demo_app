@@ -1,23 +1,18 @@
 """
 Dynamic AI Text Analysis - Streamlit App (single-file)
 
-Features:
-- Accepts pasted text or a .txt file upload for analysis.
-- Sentence-level sentiment labeling (VADER when available, fallback heuristic).
-- Neutral, background-friendly color palette (suitable for light/white backgrounds).
-- Shows a bar chart of positive / neutral / negative sentence counts.
-- Generates a WordCloud of the input text.
-- Produces an extractive summary (rule-based) and, if available, an abstractive (generative) summary
-  using Hugging Face transformers loaded lazily.
-- Graceful handling of transformers / Keras 3 incompatibility (suggests pip install tf-keras).
-- Headless-safe (forces matplotlib Agg backend).
+Updated to improve visibility in both light and dark Streamlit themes:
+- Bar chart rendered with Plotly (adapts to light/dark theme).
+- WordCloud saved with transparent background so it looks good on dark or light backgrounds.
+- Matplotlib use minimized; when used, facecolor/label colors are set based on detected theme.
+- Theme detection uses Streamlit option 'theme.base' when available, falls back to a simple heuristic.
 
-Run:
-1. pip install -r requirements.txt
-2. streamlit run app.py
+Usage:
+    pip install -r requirements.txt
+    streamlit run app.py
 """
 
-# Safety: ensure headless matplotlib backend BEFORE importing matplotlib or other libs that import it
+# --- Safety: ensure headless matplotlib backend BEFORE importing matplotlib or other libs that import it
 import os
 os.environ["MPLBACKEND"] = "Agg"
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
@@ -28,35 +23,31 @@ import math
 import heapq
 import warnings
 from typing import List
+import io
 warnings.filterwarnings("ignore")
 
 # Streamlit + plotting
 import streamlit as st
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
-import io
+import plotly.express as px
 
 # NLP
 import nltk
 from nltk.stem import WordNetLemmatizer
 
-# Attempt to import VADER (NLTK sentiment analyzer)
+# Try to import VADER
 try:
     from nltk.sentiment import SentimentIntensityAnalyzer
     _VADER_POSSIBLE = True
 except Exception:
     _VADER_POSSIBLE = False
 
-# Lazy transformers loader (for abstractive summarization)
+# Lazy transformers loader for abstractive summaries
 _TRANSFORMERS_AVAILABLE = False
 _TRANSFORMERS_IMPORT_ERROR = None
 
 def try_enable_transformers():
-    """
-    Try to import transformers and torch lazily.
-    Returns (available: bool, error_message: str|None).
-    Detects Keras 3 incompatibility and returns a helpful hint to install tf-keras.
-    """
     global _TRANSFORMERS_AVAILABLE, _TRANSFORMERS_IMPORT_ERROR
     if _TRANSFORMERS_AVAILABLE:
         return True, None
@@ -71,11 +62,7 @@ def try_enable_transformers():
         _TRANSFORMERS_IMPORT_ERROR = e
         err_str = str(e)
         if "Keras 3" in err_str or "Your currently installed version of Keras" in err_str or "tf-keras" in err_str:
-            hint = (
-                "Keras 3 incompatibility detected. Install the compatibility package:\n\n"
-                "    pip install tf-keras\n\n"
-                "Then restart the app. This lets Transformers' TF code work with Keras 3."
-            )
+            hint = "Keras 3 incompatibility detected. Install tf-keras (pip install tf-keras) and restart the app."
             return False, f"{err_str}\n\n{hint}"
         return False, err_str
 
@@ -101,7 +88,7 @@ try:
 except Exception:
     STOPWORDS = set()
 
-# Initialize VADER if installed properly
+# Initialize VADER if available
 if _VADER_POSSIBLE:
     try:
         SIA = SentimentIntensityAnalyzer()
@@ -207,10 +194,6 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
 
 # Sentence-level sentiment labeling
 def sentiment_label_for_sentence(sent: str) -> str:
-    """
-    Returns one of 'positive', 'neutral', 'negative'.
-    Uses VADER if available; otherwise uses a simple heuristic based on seed words.
-    """
     if SIA is not None:
         sc = SIA.polarity_scores(sent)
         compound = sc.get("compound", 0.0)
@@ -232,16 +215,30 @@ def sentiment_label_for_sentence(sent: str) -> str:
             return "negative"
         return "neutral"
 
-# Streamlit UI (neutral, background-friendly palette)
+# --- Theme detection helper
+def detect_theme():
+    """
+    Attempt to detect Streamlit theme: returns 'dark' or 'light'.
+    Uses st.get_option('theme.base') if available; otherwise falls back to light.
+    """
+    try:
+        base = st.get_option("theme.base")  # 'light' or 'dark'
+        if base and base.lower().startswith("dark"):
+            return "dark"
+        return "light"
+    except Exception:
+        # Fallback: assume light
+        return "light"
+
+# --- Streamlit UI
 st.set_page_config(page_title="Dynamic AI Text Analysis", layout="centered")
-st.header("Dynamic AI Text Analysis — Sentiment, Word Cloud & Summaries")
+st.title("Dynamic AI Text Analysis — Sentiment, WordCloud & Summaries")
 st.markdown(
     "Paste text or upload a plain text (.txt) file. The app will:\n\n"
-    "- Split input into sentences and label each sentence as positive / neutral / negative.\n"
-    "- Display a single bar chart with counts of positive, neutral, and negative sentences.\n"
-    "- Generate a WordCloud of the input text.\n"
-    "- Provide an extractive summary and an optional abstractive (generative) summary.\n\n"
-    "No model-training visuals or backend diagnostics are shown."
+    "- Label each sentence as positive / neutral / negative.\n"
+    "- Display a bar chart with counts of positive, neutral, and negative sentences (theme-aware).\n"
+    "- Generate a WordCloud (transparent background so it works on dark or light themes).\n"
+    "- Provide an extractive summary and an optional abstractive (generative) summary.\n"
 )
 
 # Input: text area or upload text file
@@ -254,7 +251,6 @@ with col_b:
     st.markdown(" ")
     st.info("Provide text only; no CSV files are required.")
 
-# If file uploaded, read it and populate text_input
 if uploaded is not None:
     try:
         raw = uploaded.read()
@@ -281,20 +277,12 @@ with col2:
 
 run = st.button("Analyze")
 
-# Subtle, neutral CSS to keep UI readable on light/white backgrounds
-st.markdown(
-    """
-    <style>
-    .stApp { background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%); }
-    .result-box { padding: 8px 12px; border-radius: 6px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,0.04); }
-    </style>
-    """, unsafe_allow_html=True
-)
-
+# Run analysis
 if run:
     if not text_input or not text_input.strip():
         st.error("Please paste text or upload a .txt file to analyze.")
     else:
+        theme = detect_theme()
         with st.spinner("Analyzing text..."):
             sentences = split_sentences(text_input)
             labels = [sentiment_label_for_sentence(s) for s in sentences]
@@ -302,42 +290,55 @@ if run:
             for lab in labels:
                 counts[lab] = counts.get(lab, 0) + 1
 
-            # WordCloud generation
+            # WordCloud: use RGBA + transparent background so it looks good in dark mode
             wc_text = clean_text(text_input)
             if not wc_text.strip():
                 wc_text = "empty"
-            wc = WordCloud(width=800, height=400, background_color="white", colormap="viridis").generate(wc_text)
+            wc = WordCloud(width=800, height=400, background_color=None, mode="RGBA", colormap="viridis").generate(wc_text)
 
-        # Display results
+        # Display input (collapsed)
+        st.subheader("Input text")
+        st.write(text_input)
+
+        # Sentiment bar chart — use Plotly which adapts to theme
         st.subheader("Sentiment overview")
-        st.markdown("Sentence-level counts:")
+        df_counts = {"sentiment": ["positive", "neutral", "negative"], "count": [counts["positive"], counts["neutral"], counts["negative"]]}
+        import pandas as _pd
+        dfc = _pd.DataFrame(df_counts)
 
-        # Bar chart using matplotlib with neutral, accessible colors
-        fig, ax = plt.subplots(figsize=(6,3))
-        categories = ["positive", "neutral", "negative"]
-        values = [counts.get(c, 0) for c in categories]
-        colors = ["#2b8cbe", "#6c757d", "#f03b20"]  # blue, neutral gray, red-orange (background-friendly)
-        bars = ax.bar(categories, values, color=colors, edgecolor="black")
-        ax.set_ylim(0, max(1, max(values) + 1))
-        ax.set_ylabel("Number of sentences")
-        ax.set_title("Positive / Neutral / Negative counts")
-        for i, v in enumerate(values):
-            ax.text(i, v + 0.05, str(v), ha='center', va='bottom', fontsize=10)
-        st.pyplot(fig)
+        # choose Plotly template based on detected theme
+        if theme == "dark":
+            template = "plotly_dark"
+            text_color = "white"
+        else:
+            template = "plotly_white"
+            text_color = "black"
 
+        # Colors that show well on both themes (high contrast)
+        colors = {"positive": "#2b8cbe", "neutral": "#6c757d", "negative": "#f03b20"}
+        fig = px.bar(dfc, x="sentiment", y="count", color="sentiment",
+                     color_discrete_map=colors,
+                     template=template,
+                     labels={"count":"Number of sentences", "sentiment":""})
+        fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_xaxes(tickfont=dict(color=text_color))
+        fig.update_yaxes(tickfont=dict(color=text_color), titlefont=dict(color=text_color))
+        st.plotly_chart(fig, use_container_width=True)
+
+        # WordCloud: render to PNG with transparent background
         st.subheader("Word Cloud")
         img_buf = io.BytesIO()
-        plt.figure(figsize=(10,4))
-        plt.imshow(wc, interpolation='bilinear')
+        plt.figure(figsize=(10,4), facecolor="none")
+        plt.imshow(wc, interpolation="bilinear")
         plt.axis("off")
         plt.tight_layout(pad=0)
-        plt.savefig(img_buf, format="png", bbox_inches="tight")
+        plt.savefig(img_buf, format="png", bbox_inches="tight", transparent=True)
         plt.close()
         img_buf.seek(0)
         st.image(img_buf, use_column_width=True)
 
+        # Summaries
         st.subheader("Summaries")
-        # Extractive summary
         try:
             ext = extractive_reduce(text_input, ratio=ratio)
             st.markdown("**Extractive summary**")
@@ -345,7 +346,6 @@ if run:
         except Exception as e:
             st.error(f"Extractive summary failed: {e}")
 
-        # Abstractive summary (if requested)
         if abstractive_opt:
             st.markdown("**Abstractive summary**")
             avail, err = try_enable_transformers()
@@ -362,4 +362,4 @@ if run:
                         st.info("If the error mentions Keras 3 compatibility, run: pip install tf-keras and restart the app.")
 
 st.markdown("---")
-st.caption("Enjoy the serives your feedback is worth please visit our page")
+st.caption("Theme-aware visuals: the bar chart uses Plotly which adapts to Streamlit light/dark themes; the WordCloud image has a transparent background so it displays correctly on both.")
