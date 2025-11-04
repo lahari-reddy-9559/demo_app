@@ -7,7 +7,7 @@ pandas>=2.0
 numpy>=1.24
 scikit-learn>=1.2
 httpx>=0.24
-
+plotly
 # Compatibility helper for Keras 3 + Transformers TF usage (lightweight)
 tf-keras>=2.10
 
@@ -17,3 +17,4 @@ tf-keras>=2.10
 # sentencepiece>=0.1.97
 # tensorflow>=2.10
 # rouge-score
+
