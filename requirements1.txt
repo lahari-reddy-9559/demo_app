@@ -1,21 +1,15 @@
-fastapi==0.95.2
-uvicorn[standard]==0.22.0
-streamlit==1.26.0
-httpx==0.24.1
-pandas==2.2.2
-numpy==1.26.4
-scikit-learn==1.3.2
-gensim==4.4.0
-nltk==3.8.1
-transformers==4.42.0
-torch==2.2.2
-sentencepiece==0.1.99
-python-dotenv==1.0.0
-streamlit-lottie==0.0.7
-plotly==5.18.0
-wordcloud==1.8.2.2
-rouge-score==0.1.2
-matplotlib==3.8.1
-seaborn==0.13.3
-python-multipart==0.0.6
-tqdm==4.66.1
+streamlit>=1.20
+pandas
+numpy
+scikit-learn
+nltk
+matplotlib
+seaborn
+wordcloud
+gensim
+tensorflow>=2.6  # optional, only if you want NN training and have compatible hardware
+transformers>=4.0  # optional, for abstractive summarization
+torch>=1.8  # required by transformers for many models
+sentencepiece  # required by some transformer models
+rouge-score
+scikit-image
