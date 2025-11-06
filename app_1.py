@@ -1,18 +1,23 @@
 """
 Dynamic AI Text Analysis - Streamlit App (single-file)
 
-Updated to improve visibility in both light and dark Streamlit themes:
-- Bar chart rendered with Plotly (adapts to light/dark theme).
-- WordCloud saved with transparent background so it looks good on dark or light backgrounds.
-- Matplotlib use minimized; when used, facecolor/label colors are set based on detected theme.
-- Theme detection uses Streamlit option 'theme.base' when available, falls back to a simple heuristic.
+Features:
+- Accepts pasted text or a .txt file upload for analysis.
+- Sentence-level sentiment labeling (VADER when available, fallback heuristic).
+- Neutral, background-friendly color palette (suitable for light/white backgrounds).
+- Shows a bar chart of positive / neutral / negative sentence counts (Now using st.bar_chart for animation).
+- Generates a WordCloud of the input text.
+- Produces an extractive summary (rule-based) and, if available, an abstractive (generative) summary
+  using Hugging Face transformers loaded lazily.
+- Graceful handling of transformers / Keras 3 incompatibility (suggests pip install tf-keras).
+- Headless-safe (forces matplotlib Agg backend).
 
-Usage:
-    pip install -r requirements.txt
-    streamlit run app.py
+Run:
+1. pip install -r requirements.txt
+2. streamlit run app.py
 """
 
-# --- Safety: ensure headless matplotlib backend BEFORE importing matplotlib or other libs that import it
+# Safety: ensure headless matplotlib backend BEFORE importing matplotlib or other libs that import it
 import os
 os.environ["MPLBACKEND"] = "Agg"
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
@@ -23,31 +28,36 @@ import math
 import heapq
 import warnings
 from typing import List
-import io
+import pandas as pd # <-- Added for st.bar_chart
 warnings.filterwarnings("ignore")
 
 # Streamlit + plotting
 import streamlit as st
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
-import plotly.express as px
+import io
 
 # NLP
 import nltk
 from nltk.stem import WordNetLemmatizer
 
-# Try to import VADER
+# Attempt to import VADER (NLTK sentiment analyzer)
 try:
     from nltk.sentiment import SentimentIntensityAnalyzer
     _VADER_POSSIBLE = True
 except Exception:
     _VADER_POSSIBLE = False
 
-# Lazy transformers loader for abstractive summaries
+# Lazy transformers loader (for abstractive summarization)
 _TRANSFORMERS_AVAILABLE = False
 _TRANSFORMERS_IMPORT_ERROR = None
 
 def try_enable_transformers():
+    """
+    Try to import transformers and torch lazily.
+    Returns (available: bool, error_message: str|None).
+    Detects Keras 3 incompatibility and returns a helpful hint to install tf-keras.
+    """
     global _TRANSFORMERS_AVAILABLE, _TRANSFORMERS_IMPORT_ERROR
     if _TRANSFORMERS_AVAILABLE:
         return True, None
@@ -62,7 +72,11 @@ def try_enable_transformers():
         _TRANSFORMERS_IMPORT_ERROR = e
         err_str = str(e)
         if "Keras 3" in err_str or "Your currently installed version of Keras" in err_str or "tf-keras" in err_str:
-            hint = "Keras 3 incompatibility detected. Install tf-keras (pip install tf-keras) and restart the app."
+            hint = (
+                "Keras 3 incompatibility detected. Install the compatibility package:\n\n"
+                "    pip install tf-keras\n\n"
+                "Then restart the app. This lets Transformers' TF code work with Keras 3."
+            )
             return False, f"{err_str}\n\n{hint}"
         return False, err_str
 
@@ -88,7 +102,7 @@ try:
 except Exception:
     STOPWORDS = set()
 
-# Initialize VADER if available
+# Initialize VADER if installed properly
 if _VADER_POSSIBLE:
     try:
         SIA = SentimentIntensityAnalyzer()
@@ -138,6 +152,7 @@ def extractive_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max
     return reduced
 
 # Abstractive summarizer (lazy)
+@st.cache_resource
 def make_abstractive_pipeline(model_name: str = "t5-small"):
     avail, err = try_enable_transformers()
     if not avail:
@@ -194,6 +209,10 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
 
 # Sentence-level sentiment labeling
 def sentiment_label_for_sentence(sent: str) -> str:
+    """
+    Returns one of 'positive', 'neutral', 'negative'.
+    Uses VADER if available; otherwise uses a simple heuristic based on seed words.
+    """
     if SIA is not None:
         sc = SIA.polarity_scores(sent)
         compound = sc.get("compound", 0.0)
@@ -215,151 +234,203 @@ def sentiment_label_for_sentence(sent: str) -> str:
             return "negative"
         return "neutral"
 
-# --- Theme detection helper
-def detect_theme():
-    """
-    Attempt to detect Streamlit theme: returns 'dark' or 'light'.
-    Uses st.get_option('theme.base') if available; otherwise falls back to light.
-    """
-    try:
-        base = st.get_option("theme.base")  # 'light' or 'dark'
-        if base and base.lower().startswith("dark"):
-            return "dark"
-        return "light"
-    except Exception:
-        # Fallback: assume light
-        return "light"
+# --- UI/UX Enhancements ---
 
-# --- Streamlit UI
+# Streamlit UI (neutral, background-friendly palette)
 st.set_page_config(page_title="Dynamic AI Text Analysis", layout="centered")
-st.title("Dynamic AI Text Analysis — Sentiment, WordCloud & Summaries")
+
+# Custom CSS for a modern, animated look
 st.markdown(
-    "Paste text or upload a plain text (.txt) file. The app will:\n\n"
-    "- Label each sentence as positive / neutral / negative.\n"
-    "- Display a bar chart with counts of positive, neutral, and negative sentences (theme-aware).\n"
-    "- Generate a WordCloud (transparent background so it works on dark or light themes).\n"
-    "- Provide an extractive summary and an optional abstractive (generative) summary.\n"
+    """
+    <style>
+    .stApp { 
+        background: linear-gradient(180deg, #f0f8ff 0%, #ffffff 100%); 
+        color: #333;
+    }
+    .stHeader {
+        color: #1a73e8; /* Google Blue */
+        text-align: center;
+        font-weight: 700;
+        padding-top: 10px;
+        padding-bottom: 5px;
+    }
+    /* Stylish containers for the results */
+    .result-box { 
+        padding: 15px; 
+        border-radius: 12px; 
+        background: #ffffff; 
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); 
+        margin-bottom: 20px;
+        border: 1px solid #e0e0e0;
+        transition: box-shadow 0.3s ease-in-out;
+    }
+    .result-box:hover {
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    }
+    /* Make button stand out */
+    .stButton>button {
+        background-color: #1a73e8; 
+        color: white; 
+        font-weight: bold;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 20px;
+        transition: all 0.2s;
+    }
+    .stButton>button:hover {
+        background-color: #1764cf;
+        transform: translateY(-2px);
+    }
+    </style>
+    """, unsafe_allow_html=True
 )
 
-# Input: text area or upload text file
-st.subheader("Input")
-col_a, col_b = st.columns([3,1])
-with col_a:
-    text_input = st.text_area("Paste your text here", height=260, placeholder="Type or paste text to analyze...")
-with col_b:
-    uploaded = st.file_uploader("Or upload a plain .txt file", type=["txt"])
-    st.markdown(" ")
-    st.info("Provide text only; no CSV files are required.")
+st.title("🤖 Dynamic AI Text Analysis")
+st.markdown(
+    """
+    **Instantly analyze text** for sentiment, keyword frequency, and generate automatic summaries.
+    This app provides **sentence-level sentiment** and two types of summarization.
+    """
+)
+st.info("💡 **Instructions:** Paste text or upload a .txt file below, adjust the summary options, and click **Analyze**.")
 
-if uploaded is not None:
-    try:
-        raw = uploaded.read()
+# Use a form for a more convenient grouped input/control area
+with st.form(key='analysis_form'):
+    st.header("1️⃣ Input & Options")
+
+    # Input: text area or upload text file (side by side)
+    col_a, col_b = st.columns([3,1])
+    
+    # Initialize text_input to a default value for the form
+    if 'default_text_input' not in st.session_state:
+        st.session_state.default_text_input = ""
+
+    with col_a:
+        text_input = st.text_area(
+            "📝 Paste your text here (or use the file upload)", 
+            height=260, 
+            placeholder="Type or paste text to analyze...",
+            value=st.session_state.default_text_input # Use session state for sticky text
+        )
+
+    with col_b:
+        uploaded = st.file_uploader("📂 Upload a plain .txt file", type=["txt"])
+        
+        # Options moved inside the columns for better layout
+        st.markdown("---")
+        st.caption("Summary Controls:")
+        ratio = st.slider("Extractive summary ratio", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
+        abstractive_opt = st.checkbox("Generate abstractive summary (AI Model)", value=False)
+        if abstractive_opt:
+            abstr_model = st.selectbox("Abstractive model", ["t5-small", "t5-base"], index=0)
+        else:
+            abstr_model = None
+
+    # Process file upload if it exists
+    if uploaded is not None:
         try:
-            file_text = raw.decode("utf-8")
-        except Exception:
-            file_text = raw.decode("latin-1")
-        text_input = file_text
-        st.success("Loaded text file")
-    except Exception as e:
-        st.error(f"Failed to read uploaded file: {e}")
+            raw = uploaded.read()
+            try:
+                file_text = raw.decode("utf-8")
+            except Exception:
+                file_text = raw.decode("latin-1")
+            
+            # Overwrite text_input and update session state
+            text_input = file_text
+            st.session_state.default_text_input = file_text
+            st.toast("✅ File loaded! Click 'Analyze'.", icon='📄')
+        except Exception as e:
+            st.error(f"❌ Failed to read uploaded file: {e}")
+            
+    # Form submission button
+    run = st.form_submit_button("✨ Analyze Text")
 
-# Controls
-st.subheader("Options")
-col1, col2 = st.columns(2)
-with col1:
-    ratio = st.slider("Extractive summary ratio", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
-with col2:
-    abstractive_opt = st.checkbox("Generate abstractive summary if available", value=False)
-    if abstractive_opt:
-        abstr_model = st.selectbox("Abstractive model", ["t5-small", "t5-base"], index=0)
-    else:
-        abstr_model = None
+# --- Analysis Logic and Results Display ---
 
-run = st.button("Analyze")
-
-# Run analysis
 if run:
     if not text_input or not text_input.strip():
-        st.error("Please paste text or upload a .txt file to analyze.")
+        st.error("🚨 Please paste text or upload a .txt file to analyze.")
     else:
-        theme = detect_theme()
-        with st.spinner("Analyzing text..."):
+        # Update text input state for persistence
+        st.session_state.default_text_input = text_input 
+        
+        with st.spinner("Processing sentiment and preparing analysis..."):
             sentences = split_sentences(text_input)
             labels = [sentiment_label_for_sentence(s) for s in sentences]
             counts = {"positive": 0, "neutral": 0, "negative": 0}
             for lab in labels:
                 counts[lab] = counts.get(lab, 0) + 1
 
-            # WordCloud: use RGBA + transparent background so it looks good in dark mode
+            # WordCloud generation
             wc_text = clean_text(text_input)
             if not wc_text.strip():
                 wc_text = "empty"
-            wc = WordCloud(width=800, height=400, background_color=None, mode="RGBA", colormap="viridis").generate(wc_text)
+            # Using 'RdYlGn' or 'viridis' for general readability
+            wc = WordCloud(width=800, height=400, background_color="white", colormap="viridis").generate(wc_text)
 
-        # Display input (collapsed)
-        st.subheader("Input text")
-        st.write(text_input)
+        st.markdown('<div class="result-box">', unsafe_allow_html=True)
+        st.header("2️⃣ Results Overview")
+        st.markdown("---")
+        
+        # --- Sentiment Plot (using st.bar_chart for native animation) ---
+        st.subheader("📊 Sentiment Breakdown")
+        st.markdown("Sentence-level counts:")
+        
+        sentiment_data = pd.DataFrame({
+            'Sentiment': ["Positive", "Neutral", "Negative"],
+            'Count': [counts.get("positive", 0), counts.get("neutral", 0), counts.get("negative", 0)]
+        })
+        
+        st.bar_chart(
+            sentiment_data.set_index('Sentiment'), 
+            color=['#2b8cbe', '#6c757d', '#f03b20'] # Use the same neutral, accessible colors
+        )
+        st.dataframe(sentiment_data, hide_index=True, use_container_width=True)
 
-        # Sentiment bar chart — use Plotly which adapts to theme
-        st.subheader("Sentiment overview")
-        df_counts = {"sentiment": ["positive", "neutral", "negative"], "count": [counts["positive"], counts["neutral"], counts["negative"]]}
-        import pandas as _pd
-        dfc = _pd.DataFrame(df_counts)
 
-        # choose Plotly template based on detected theme
-        if theme == "dark":
-            template = "plotly_dark"
-            text_color = "white"
-        else:
-            template = "plotly_white"
-            text_color = "black"
-
-        # Colors that show well on both themes (high contrast)
-        colors = {"positive": "#2b8cbe", "neutral": "#6c757d", "negative": "#f03b20"}
-        fig = px.bar(dfc, x="sentiment", y="count", color="sentiment",
-                     color_discrete_map=colors,
-                     template=template,
-                     labels={"count":"Number of sentences", "sentiment":""})
-        fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
-        fig.update_xaxes(tickfont=dict(color=text_color))
-        fig.update_yaxes(tickfont=dict(color=text_color), titlefont=dict(color=text_color))
-        st.plotly_chart(fig, use_container_width=True)
-
-        # WordCloud: render to PNG with transparent background
-        st.subheader("Word Cloud")
+        # --- Word Cloud ---
+        st.markdown("---")
+        st.subheader("☁️ Word Cloud")
+        
         img_buf = io.BytesIO()
-        plt.figure(figsize=(10,4), facecolor="none")
-        plt.imshow(wc, interpolation="bilinear")
+        plt.figure(figsize=(10,4))
+        plt.imshow(wc, interpolation='bilinear')
         plt.axis("off")
         plt.tight_layout(pad=0)
-        plt.savefig(img_buf, format="png", bbox_inches="tight", transparent=True)
+        plt.savefig(img_buf, format="png", bbox_inches="tight")
         plt.close()
         img_buf.seek(0)
         st.image(img_buf, use_column_width=True)
-
-        # Summaries
-        st.subheader("Summaries")
+        
+        # --- Summaries ---
+        st.markdown("---")
+        st.subheader("📑 Summaries")
+        
+        # Extractive summary
+        st.markdown("##### **Rule-Based (Extractive) Summary**")
         try:
             ext = extractive_reduce(text_input, ratio=ratio)
-            st.markdown("**Extractive summary**")
-            st.write(ext)
+            st.success(ext)
         except Exception as e:
             st.error(f"Extractive summary failed: {e}")
 
+        # Abstractive summary (if requested)
         if abstractive_opt:
-            st.markdown("**Abstractive summary**")
+            st.markdown("##### **Generative (Abstractive) Summary**")
             avail, err = try_enable_transformers()
             if not avail:
-                st.error("Abstractive summarization unavailable: " + (err or "transformers/torch not installed."))
-                st.info("To enable abstractive summaries, install: pip install transformers torch sentencepiece tf-keras")
+                st.error("❌ Abstractive summarization unavailable: " + (err or "transformers/torch not installed."))
+                st.info("To enable abstractive summaries, install: `pip install transformers torch sentencepiece tf-keras`")
             else:
-                with st.spinner("Generating abstractive summary (may take time)..."):
+                with st.spinner(f"Generating abstractive summary using **{abstr_model}** (may take a moment for download/computation)..."):
                     try:
                         abstr = abstractive_summarize_text(text_input, model_name=abstr_model, max_length=120, min_length=20, use_reduced=True)
-                        st.write(abstr)
+                        st.success(abstr)
                     except Exception as e:
-                        st.error(f"Abstractive summarization failed at runtime: {e}")
-                        st.info("If the error mentions Keras 3 compatibility, run: pip install tf-keras and restart the app.")
+                        st.error(f"❌ Abstractive summarization failed at runtime: {e}")
+                        st.info("If the error mentions Keras 3 compatibility, run: `pip install tf-keras` and restart the app.")
+        
+        st.markdown('</div>', unsafe_allow_html=True) # Close the result-box div
 
 st.markdown("---")
-st.caption("Theme-aware visuals: the bar chart uses Plotly which adapts to Streamlit light/dark themes; the WordCloud image has a transparent background so it displays correctly on both.")
+st.caption("Enjoy the service. Your feedback is valuable! Thank you for visiting our page.")
