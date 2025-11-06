@@ -12,9 +12,10 @@ plotly
 tf-keras>=2.10
 
 # Optional heavy dependencies — install only if you need abstractive (transformers) summaries:
-# transformers>=4.30
-# torch>=2.0
-# sentencepiece>=0.1.97
-# tensorflow>=2.10
+transformers>=4.30
+torch>=2.0
+sentencepiece>=0.1.97
+tensorflow>=2.10
 # rouge-score
+
 
