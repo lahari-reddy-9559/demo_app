@@ -19,7 +19,7 @@ Run:
 import os
 os.environ["MPLBACKEND"] = "Agg"
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
-
+pip install transformers torch sentencepiece tf-keras
 # Standard libs
 import re
 import math
@@ -451,3 +451,4 @@ if run:
 
 st.markdown("---")
 st.caption("Powered by Streamlit, NLTK, and Hugging Face Transformers. Thank you for using this analysis tool.")
+
