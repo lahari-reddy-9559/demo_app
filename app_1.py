@@ -1,27 +1,31 @@
 """
 Dynamic AI Text Analysis - Streamlit App (single-file)
 
-Features:
-- Professional, cross-mode compatible UI/UX with smooth Altair charting.
-- Input via pasted text or .txt file upload.
-- Sentence-level sentiment (VADER/heuristic fallback).
-- WordCloud generation with a neutral, clear color scheme.
-- Rule-based (extractive) and optional ML-based (abstractive) summarization.
-- All model options (like t5-base) are available before the 'Analyze' button is pressed.
-- Robust dependency checking for 'transformers'.
+This script provides a professional, single-file Streamlit application for analyzing text,
+including sentiment breakdown, word cloud generation, and both rule-based (extractive)
+and machine learning (abstractive/generative) summarization.
 
-Run:
-1. pip install -r requirements.txt (Ensure this includes pandas, streamlit, nltk, wordcloud, altair, and the required ML libs if needed)
-2. streamlit run app.py
+Key Features:
+- Professional, cross-mode (light/dark) compatible UI/UX.
+- Uses Altair/Pandas for correct, animated chart coloring.
+- Abstractive model options (t5-small, t5-base) are visible pre-analysis.
+- Robust dependency checking for NLTK and optional Hugging Face Transformers.
+
+Run Instructions (Requires Python 3.8+):
+1. Create a new file named 'app.py' and paste this entire code.
+2. Install necessary libraries (core requirements):
+   pip install streamlit pandas nltk wordcloud altair
+3. (OPTIONAL - FOR GENERATIVE SUMMARY) Install ML libraries:
+   pip install transformers torch sentencepiece tf-keras
+4. Run the app:
+   streamlit run app.py
 """
 
 # Safety: ensure headless matplotlib backend BEFORE importing matplotlib or other libs that import it
 import os
 os.environ["MPLBACKEND"] = "Agg"
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
-import transformers 
-import torch 
-import sentencepiece 
+
 # Standard libs
 import re
 import math
@@ -77,7 +81,7 @@ def try_enable_transformers():
             hint = (
                 "Keras 3 incompatibility detected. Please install the compatibility package:\n\n"
                 "    `pip install tf-keras`\n\n"
-                "Then restart the application. This ensures Transformers' TF code works with Keras 3."
+                "Then restart the application."
             )
             return False, f"Keras/TensorFlow Error: {err_str}\n\n{hint}"
         
@@ -99,7 +103,8 @@ for pkg in nltk_packages:
             nltk.data.find(f"corpora/{pkg}")
     except LookupError:
         try:
-            nltk.download(pkg, quiet=True)
+            # Silence NLTK downloads to keep the console clean
+            nltk.download(pkg, quiet=True) 
         except Exception:
             pass
 
@@ -121,7 +126,7 @@ else:
     SIA = None
     _VADER_AVAILABLE = False
 
-# Text utilities (functions remain identical as per user request to maintain functionality)
+# Text utilities (functionality is preserved)
 _SENT_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 def split_sentences(text: str) -> List[str]:
     sents = [s.strip() for s in _SENT_SPLIT_RE.split(text) if s.strip()]
@@ -162,7 +167,7 @@ def make_abstractive_pipeline(model_name: str = "t5-small"):
     avail, err = try_enable_transformers()
     if not avail:
         raise RuntimeError(err or "transformers/torch not available")
-    from transformers import pipeline  # local import
+    from transformers import pipeline
     import torch as _torch
     device = 0 if _torch.cuda.is_available() else -1
     return pipeline("summarization", model=model_name, tokenizer=model_name, device=device)
@@ -235,7 +240,7 @@ def sentiment_label_for_sentence(sent: str) -> str:
             return "negative"
         return "neutral"
 
-# --- UI/UX Enhancements and Dark Mode Fixes ---
+# --- UI/UX & Styling ---
 
 st.set_page_config(page_title="Text Analysis Dashboard", layout="centered")
 
@@ -243,7 +248,7 @@ st.set_page_config(page_title="Text Analysis Dashboard", layout="centered")
 st.markdown(
     """
     <style>
-    /* Ensure colors adapt to Streamlit's theme */
+    /* Ensure colors adapt to Streamlit's theme and text is readable */
     .stApp { 
         background-color: var(--background-color); 
         color: var(--text-color);
@@ -253,14 +258,11 @@ st.markdown(
         padding: 18px; 
         border-radius: 10px; 
         background: var(--secondary-background-color); 
+        /* Adjusted box-shadow for better visibility in both modes */
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(128, 128, 128, 0.1); 
         margin-bottom: 25px;
         transition: box-shadow 0.3s ease-in-out;
     }
-    .result-box:hover {
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-    }
-    /* Button style remains bold and distinct */
     .stButton>button {
         background-color: #1a73e8; 
         color: white; 
@@ -276,8 +278,7 @@ st.markdown(
 st.title("💡 Text Insights Engine")
 st.markdown(
     """
-    Analyze textual data using a combination of fast **rule-based methods** (Extractive Summary, VADER Sentiment) 
-    and optional **Transformer models** for deeper, generative insights (Abstractive Summary).
+    Analyze textual data using a combination of fast **rule-based methods** and optional **Transformer models** for deeper, generative insights.
     """
 )
 st.info("📌 **Get Started:** Input your text, configure the summary options below, and run the analysis.")
@@ -288,11 +289,11 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     ratio = st.slider("Extractive Summary Length Ratio", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
-    st.caption("Controls the proportion of sentences kept for the rule-based summary.")
+    st.caption("Proportion of sentences kept for the rule-based summary.")
 
 with col2:
-    abstractive_opt = st.checkbox("Enable Generative Summary (Requires ML Libraries)", value=False)
-    st.caption("Check this to use models like T5 for abstractive summarization.")
+    abstractive_opt = st.checkbox("Enable Generative Summary (ML-Based)", value=False)
+    st.caption("Check to use Transformer models (T5).")
 
 with col3:
     if abstractive_opt:
@@ -375,11 +376,11 @@ if run:
             'Count': [counts.get("positive", 0), counts.get("neutral", 0), counts.get("negative", 0)]
         })
         
-        # Define the colors: professional blue/gray/red palette
+        # Define the colors: professional green/gray/red palette
         sentiment_colors = {
-            "Positive": "#4daf4a", # Green for Positive
-            "Neutral": "#6c757d",  # Gray for Neutral
-            "Negative": "#e41a1c"  # Red for Negative
+            "Positive": "#4daf4a", # Green
+            "Neutral": "#6c757d",  # Gray
+            "Negative": "#e41a1c"  # Red
         }
         
         base = alt.Chart(sentiment_data).encode(
@@ -396,6 +397,7 @@ if run:
         )
         
         st.altair_chart(chart, use_container_width=True)
+
         st.dataframe(sentiment_data.sort_values(by='Count', ascending=False), hide_index=True, use_container_width=True)
 
 
@@ -418,7 +420,7 @@ if run:
             st.image(img_buf, use_column_width=True)
         
         with col_wc_info:
-            st.markdown("The Word Cloud highlights **frequently occurring words** in the document after removing common stop words (like 'the', 'is', 'a').")
+            st.markdown("The Word Cloud highlights **frequently occurring words** after removing common stop words.")
             st.caption(f"Total Sentences: {len(sentences)}")
             st.caption(f"Analyzed Tokens: {len(wc_text.split())}")
 
@@ -441,6 +443,7 @@ if run:
             avail, err = try_enable_transformers()
             if not avail:
                 st.error(f"❌ **Generative Summary Unavailable**\n\n**Reason:** {err}")
+                st.caption("You must install the optional machine learning dependencies (transformers, torch, etc.) to use this feature.")
             else:
                 with st.spinner(f"Generating summary using **{abstr_model}**... (This step may require model download/initialization.)"):
                     try:
@@ -449,10 +452,7 @@ if run:
                     except Exception as e:
                         st.error(f"❌ Generative summarization failed at runtime: {e}")
                         
-        st.markdown('</div>', unsafe_allow_html=True) # Close the result-box div
+        st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("Powered by Streamlit, NLTK, and Hugging Face Transformers. Thank you for using this analysis tool.")
-
-
-
+st.caption("Powered by Streamlit, NLTK, and Hugging Face. Thank you for using this analysis tool.")
