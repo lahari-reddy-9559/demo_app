@@ -78,6 +78,7 @@ except Exception:
     STOPWORDS = set()
 
 # --- Core Logic Functions (Preserved) ---
+# THIS SECTION MUST EXIST BEFORE THE 'if run:' BLOCK
 _SENT_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 def split_sentences(text: str) -> List[str]:
     sents = [s.strip() for s in _SENT_SPLIT_RE.split(text) if s.strip()]
@@ -156,6 +157,24 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
     if isinstance(out, list) and out:
         return out[0].get("summary_text", "").strip()
     return str(out)
+
+def sentiment_label_for_sentence(sent: str) -> str:
+    """ Returns one of 'positive', 'neutral', 'negative'. """
+    if SIA is not None:
+        sc = SIA.polarity_scores(sent)
+        compound = sc.get("compound", 0.0)
+        if compound >= 0.05: return "positive"
+        elif compound <= -0.05: return "negative"
+        else: return "neutral"
+    else: # Heuristic fallback
+        pos_words = {"good","great","happy","love"}
+        neg_words = {"bad","terrible","hate","awful"}
+        words = set(w.lower() for w in re.findall(r"\w+", sent))
+        p = len(words & pos_words)
+        n = len(words & neg_words)
+        if p > n: return "positive"
+        if n > p: return "negative"
+        return "neutral"
 
 # --- UI/UX & Style ---
 
@@ -258,8 +277,9 @@ if run:
         st.session_state.default_text_input = text_input 
         
         with st.spinner("Calculating..."):
+            # The function call is safe here because it's defined above
             sentences = split_sentences(text_input)
-            labels = [sentiment_label_for_sentence(s) for s in sentences]
+            labels = [sentiment_label_for_sentence(s) for s in sentences] 
             counts = {"positive": 0, "neutral": 0, "negative": 0}
             for lab in labels: counts[lab] = counts.get(lab, 0) + 1
             wc_text = clean_text(text_input)
