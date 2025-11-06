@@ -1,7 +1,7 @@
 """
-Text Overanalysis Engine - Streamlit App (Sarcastic Edition)
+Text Analysis Tool: Slightly Less Painful Edition - Streamlit App
 
-Focus: Minimal detail, unique, sarcastic UI style, dark/light mode compatible.
+Focus: Minimal detail, unique, slightly sarcastic UI tone about the process, dark/light mode compatible.
 Functionality: Sentiment, Word Cloud, Extractive/Generative Summaries.
 """
 
@@ -30,7 +30,7 @@ import io
 import nltk
 from nltk.stem import WordNetLemmatizer
 
-# --- Dependency Setup (Kept Minimal) ---
+# --- Dependency Setup ---
 try:
     from nltk.sentiment import SentimentIntensityAnalyzer
     SIA = SentimentIntensityAnalyzer()
@@ -41,7 +41,7 @@ _TRANSFORMERS_AVAILABLE = False
 _TRANSFORMERS_IMPORT_ERROR = None
 
 def try_enable_transformers():
-    """Checks for transformers and returns a brief, sarcastic error message if missing."""
+    """Checks for transformers and returns a brief error message about missing dependencies."""
     global _TRANSFORMERS_AVAILABLE, _TRANSFORMERS_IMPORT_ERROR
     if _TRANSFORMERS_AVAILABLE: return True, None
     try:
@@ -54,12 +54,11 @@ def try_enable_transformers():
         _TRANSFORMERS_AVAILABLE = False
         err_str = str(e)
         
-        # Sarcastic, brief error message
-        if "No module named 'transformers'" in err_str:
-             return False, "You forgot to install the big libraries. Run: `pip install transformers torch sentencepiece tf-keras`"
-        if "Keras 3" in err_str:
-            return False, "Keras is having a mid-life crisis. Try: `pip install tf-keras`"
-        return False, f"Some Python nonsense broke it. ({err_str[:40]}...)"
+        if "No module named 'transformers'" in err_str or "'transformers'" in err_str:
+             return False, "Generative summary needs heavy lifting. Run: `pip install transformers torch sentencepiece tf-keras`"
+        if "Keras 3" in err_str or "tf-keras" in err_str:
+            return False, "Keras is confused. Try: `pip install tf-keras`."
+        return False, f"ML library weirdness occurred. ({err_str[:40]}...)"
 
 
 # Ensure NLTK resources (silent download)
@@ -134,16 +133,14 @@ def trim_for_model(text: str, model_name: str, fraction_of_model_max: float = 0.
     joined = " ".join(sentences)
     if token_count(joined) <= budget: return joined
     
-    # Simple trimming heuristic
     trimmed_sents = []
     current_tokens = 0
     for sent in sentences:
         sent_tokens = token_count(sent)
-        if current_tokens + sent_tokens + 2 <= budget: # +2 for delimiters
+        if current_tokens + sent_tokens + 2 <= budget:
             trimmed_sents.append(sent)
             current_tokens += sent_tokens
         elif current_tokens == 0:
-            # If the first sentence is too long, truncate it
             ids = tokenizer.encode(sent, add_special_tokens=False)[:budget]
             return tokenizer.decode(ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
 
@@ -160,51 +157,31 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
         return out[0].get("summary_text", "").strip()
     return str(out)
 
-def sentiment_label_for_sentence(sent: str) -> str:
-    """ Returns one of 'positive', 'neutral', 'negative'. """
-    if SIA is not None:
-        sc = SIA.polarity_scores(sent)
-        compound = sc.get("compound", 0.0)
-        if compound >= 0.05: return "positive"
-        elif compound <= -0.05: return "negative"
-        else: return "neutral"
-    else: # Heuristic fallback
-        pos_words = {"good","great","happy","love"}
-        neg_words = {"bad","terrible","hate","awful"}
-        words = set(w.lower() for w in re.findall(r"\w+", sent))
-        p = len(words & pos_words)
-        n = len(words & neg_words)
-        if p > n: return "positive"
-        if n > p: return "negative"
-        return "neutral"
+# --- UI/UX & Style ---
 
-# --- SARCASTIC UI & STYLE ---
+st.set_page_config(page_title="Text Analysis Tool", layout="centered")
 
-st.set_page_config(page_title="Text Overanalysis", layout="centered")
-
-# Minimalist CSS with dark/light mode adaptability
+# Minimalist CSS with slightly sarcastic red accents for high visibility
 st.markdown(
     """
     <style>
-    /* Use bold, generic font */
     html, body, [class*="st-"] {
-        font-family: sans-serif !important;
+        font-family: Arial, sans-serif !important; /* Standard font */
     }
     .stApp { 
         background-color: var(--background-color); 
         color: var(--text-color);
     }
-    /* Sarcastic result box */
     .result-box { 
         padding: 18px; 
         border-radius: 6px; 
         background: var(--secondary-background-color); 
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
         margin-bottom: 20px;
-        border: 1px solid #ff4b4b; /* Subtle red border for "sarcasm" */
+        border: 1px solid var(--primary-color); /* Use Streamlit's main color for the border */
     }
     .stButton>button {
-        background-color: #ff4b4b; /* Red button for drama */
+        background-color: var(--primary-color); /* Use Streamlit's primary color */
         color: white; 
         font-weight: bold;
         border-radius: 4px;
@@ -215,33 +192,33 @@ st.markdown(
     """, unsafe_allow_html=True
 )
 
-st.title("🤦 Text Overanalysis Tool")
-st.markdown("Honestly, it just counts words and gets feelings wrong. But sure, let's analyze it.")
-st.info("⚠️ **Rules:** Put text in. Press the button. Complain later.")
+st.title("🧐 Text Analyzer: Get It Over With")
+st.markdown("A simple way to get sentiment and summaries without *too* much fanfare.")
+st.info("💡 **Setup:** Input text, adjust settings, and click 'Analyze'. That's it.")
 
 # --- OPTIONS SECTION ---
-st.header("1. Settings (Boring but necessary)")
+st.header("1. Configuration (The Necessary Evil)")
 col1, col2, col3 = st.columns(3)
 
 with col1:
     ratio = st.slider("Keep-Sentence Ratio", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
-    st.caption("How much summary you want to read.")
+    st.caption("How much of the original text you tolerate.")
 
 with col2:
-    abstractive_opt = st.checkbox("Generate Smarter Summary (If you installed the huge libraries)", value=False)
-    st.caption("Warning: Requires a functioning internet/PC.")
+    abstractive_opt = st.checkbox("Use AI Summary Model", value=False)
+    st.caption("WARNING: This downloads large files.")
 
 with col3:
     if abstractive_opt:
-        abstr_model = st.selectbox("Model Overkill", ["t5-small", "t5-base"], index=0)
+        abstr_model = st.selectbox("Model Overkill Level", ["t5-small", "t5-base"], index=0)
     else:
         abstr_model = None
-        st.markdown("*Disabled: Too much work*")
+        st.markdown("*Disabled*")
 
 # --- INPUT SECTION ---
 st.markdown("---")
 with st.form(key='analysis_form'):
-    st.header("2. Hand Over the Text")
+    st.header("2. Input")
 
     col_a, col_b = st.columns([3,1])
     
@@ -249,14 +226,15 @@ with st.form(key='analysis_form'):
 
     with col_a:
         text_input = st.text_area(
-            "Dump Text Here", 
+            "Paste Text Here", 
             height=260, 
-            placeholder="Go on, paste your masterpiece...",
+            placeholder="Just drop the text here...",
             value=st.session_state.default_text_input
         )
 
     with col_b:
-        uploaded = st.file_uploader("Or Upload .txt (Easier)", type=["txt"])
+        uploaded = st.file_uploader("Or Upload File", type=["txt"])
+        st.markdown("---")
         
         if uploaded is not None:
             try:
@@ -264,23 +242,22 @@ with st.form(key='analysis_form'):
                 file_text = raw.decode("utf-8", errors='ignore')
                 text_input = file_text
                 st.session_state.default_text_input = file_text
-                st.toast("✅ File loaded. Now hurry up and click the button.", icon='📄')
+                st.toast("File loaded. Don't forget to hit Analyze.", icon='📄')
             except Exception as e:
-                st.error(f"❌ File upload failed. Why is it always something? Error: {e}")
+                st.error(f"File Read Error: {e}")
             
-    # Form submission button
-    run = st.form_submit_button("🛑 Stop Procrastinating, Analyze")
+    run = st.form_submit_button("Analyze")
 
 # --- RESULTS DISPLAY ---
 st.markdown("---")
 
 if run:
     if not text_input or not text_input.strip():
-        st.error("🚨 Seriously? I can't analyze air.")
+        st.error("🚨 Input is empty. Shocking.")
     else:
         st.session_state.default_text_input = text_input 
         
-        with st.spinner("Judging your text..."):
+        with st.spinner("Calculating..."):
             sentences = split_sentences(text_input)
             labels = [sentiment_label_for_sentence(s) for s in sentences]
             counts = {"positive": 0, "neutral": 0, "negative": 0}
@@ -290,17 +267,18 @@ if run:
             wc = WordCloud(width=800, height=400, background_color="white", colormap="Dark2").generate(wc_text)
 
         st.markdown('<div class="result-box">', unsafe_allow_html=True)
-        st.header("3. The Obvious Results")
+        st.header("3. Output")
         st.markdown("---")
         
         # --- Sentiment Plot ---
-        st.subheader("Sentiment: How Wrong Am I?")
+        st.subheader("Sentiment: The Feeling")
         
         sentiment_data = pd.DataFrame({
             'Sentiment': ["Positive", "Neutral", "Negative"],
             'Count': [counts.get("positive", 0), counts.get("neutral", 0), counts.get("negative", 0)]
         })
         
+        # Colors remain professional but distinct
         sentiment_colors = {
             "Positive": "#4daf4a", 
             "Neutral": "#6c757d",  
@@ -315,50 +293,57 @@ if run:
             color=alt.Color('Sentiment', scale=alt.Scale(domain=list(sentiment_colors.keys()), 
                                                         range=list(sentiment_colors.values()))),
             tooltip=['Sentiment', 'Count']
-        ).properties(title="Emotional Breakdown (Probably Inaccurate)")
+        ).properties(title="Sentiment Counts")
         
         st.altair_chart(chart, use_container_width=True)
         st.dataframe(sentiment_data.sort_values(by='Count', ascending=False), hide_index=True, use_container_width=True)
 
         # --- Word Cloud ---
         st.markdown("---")
-        st.subheader("Word Cloud: The Hype Map")
+        st.subheader("Word Cloud: Most Frequent Noise")
+        
+        col_wc_img, col_wc_info = st.columns([3, 1])
         
         img_buf = io.BytesIO()
         plt.figure(figsize=(10,4))
         plt.imshow(wc, interpolation='bilinear'); plt.axis("off"); plt.tight_layout(pad=0)
         plt.savefig(img_buf, format="png", bbox_inches="tight"); plt.close()
         img_buf.seek(0)
-        st.image(img_buf, use_column_width=True)
-        st.caption("These are the words you used most. Stop repeating yourself.")
+        
+        with col_wc_img:
+            st.image(img_buf, use_column_width=True)
+        
+        with col_wc_info:
+            st.caption(f"Sentences: {len(sentences)}")
+            st.caption(f"Tokens: {len(wc_text.split())}")
 
         # --- Summaries ---
         st.markdown("---")
-        st.subheader("Summaries: Did you really need all that text?")
+        st.subheader("Summaries: The TL;DR")
         
         # Extractive summary
-        st.markdown("##### ✂️ Extractive Summary (The lazy way)")
+        st.markdown("##### ✂️ Extractive Summary")
         try:
             ext = extractive_reduce(text_input, ratio=ratio)
             st.success(ext)
         except Exception as e:
-            st.error(f"Failed. Couldn't even copy and paste correctly. Error: {e}")
+            st.error(f"Extractive failed. It's fine, nobody reads it anyway. Error: {e}")
 
         # Abstractive summary (if requested)
         if abstractive_opt:
-            st.markdown("##### 🧠 Generative Summary (The expensive way)")
+            st.markdown("##### 🧠 Generative Summary (The 'Smart' Version)")
             avail, err = try_enable_transformers()
             if not avail:
-                st.error(f"❌ **Failed.** Reason: {err}")
+                st.error(f"❌ **Model Unavailable.** Reason: {err}")
             else:
-                with st.spinner(f"Waiting for **{abstr_model}** to wake up..."):
+                with st.spinner(f"Waiting for **{abstr_model}** to think..."):
                     try:
                         abstr = abstractive_summarize_text(text_input, model_name=abstr_model)
                         st.success(abstr)
                     except Exception as e:
-                        st.error(f"❌ ML model choked. Maybe use a smaller text next time? Error: {e}")
+                        st.error(f"❌ ML model error. Stick to the rule-based one. Error: {e}")
                         
         st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("Built for overthinkers. Now go outside.")
+st.caption("Done yet?")
