@@ -4,12 +4,12 @@ Dynamic AI Text Analysis - Streamlit App (single-file)
 Features:
 - Accepts pasted text or a .txt file upload for analysis.
 - Sentence-level sentiment labeling (VADER when available, fallback heuristic).
-- Neutral, background-friendly color palette (suitable for light/white backgrounds).
-- Shows a bar chart of positive / neutral / negative sentence counts (Now using st.bar_chart for animation).
+- Neutral, cross-mode friendly color palette.
+- Shows a bar chart of positive / neutral / negative sentence counts (using Altair for correct coloring).
 - Generates a WordCloud of the input text.
 - Produces an extractive summary (rule-based) and, if available, an abstractive (generative) summary
   using Hugging Face transformers loaded lazily.
-- Graceful handling of transformers / Keras 3 incompatibility (suggests pip install tf-keras).
+- Graceful handling of dependencies and Keras 3 incompatibility.
 - Headless-safe (forces matplotlib Agg backend).
 
 Run:
@@ -28,7 +28,8 @@ import math
 import heapq
 import warnings
 from typing import List
-import pandas as pd # <-- Added for st.bar_chart
+import pandas as pd # <-- Added for data handling
+import altair as alt # <-- Added for explicit chart control
 warnings.filterwarnings("ignore")
 
 # Streamlit + plotting
@@ -239,29 +240,23 @@ def sentiment_label_for_sentence(sent: str) -> str:
 # Streamlit UI (neutral, background-friendly palette)
 st.set_page_config(page_title="Dynamic AI Text Analysis", layout="centered")
 
-# Custom CSS for a modern, animated look
+# Custom CSS for a modern, animated look (works across light/dark modes)
 st.markdown(
     """
     <style>
+    /* Gradient background for light mode; should gracefully degrade in dark mode */
     .stApp { 
         background: linear-gradient(180deg, #f0f8ff 0%, #ffffff 100%); 
-        color: #333;
-    }
-    .stHeader {
-        color: #1a73e8; /* Google Blue */
-        text-align: center;
-        font-weight: 700;
-        padding-top: 10px;
-        padding-bottom: 5px;
+        color: var(--text-color); /* Use Streamlit's text variable */
     }
     /* Stylish containers for the results */
     .result-box { 
         padding: 15px; 
         border-radius: 12px; 
-        background: #ffffff; 
+        background: var(--background-color); /* Use Streamlit's background variable */
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); 
         margin-bottom: 20px;
-        border: 1px solid #e0e0e0;
+        border: 1px solid var(--secondary-background-color);
         transition: box-shadow 0.3s ease-in-out;
     }
     .result-box:hover {
@@ -365,27 +360,54 @@ if run:
             wc_text = clean_text(text_input)
             if not wc_text.strip():
                 wc_text = "empty"
-            # Using 'RdYlGn' or 'viridis' for general readability
+            # Using 'viridis' colormap
             wc = WordCloud(width=800, height=400, background_color="white", colormap="viridis").generate(wc_text)
 
         st.markdown('<div class="result-box">', unsafe_allow_html=True)
         st.header("2️⃣ Results Overview")
         st.markdown("---")
         
-        # --- Sentiment Plot (using st.bar_chart for native animation) ---
+        # --- Sentiment Plot (FIXED: Using Altair for correct color mapping) ---
         st.subheader("📊 Sentiment Breakdown")
         st.markdown("Sentence-level counts:")
         
+        # 1. Create a DataFrame for plotting
         sentiment_data = pd.DataFrame({
             'Sentiment': ["Positive", "Neutral", "Negative"],
             'Count': [counts.get("positive", 0), counts.get("neutral", 0), counts.get("negative", 0)]
         })
         
-        st.bar_chart(
-            sentiment_data.set_index('Sentiment'), 
-            color=['#2b8cbe', '#6c757d', '#f03b20'] # Use the same neutral, accessible colors
+        # Define the consistent, neutral colors for all modes
+        sentiment_colors = {
+            "Positive": "#2b8cbe", # Blue (Trustworthy, neutral positive)
+            "Neutral": "#6c757d",  # Gray (Neutral)
+            "Negative": "#f03b20"  # Red-Orange (Warning, neutral negative)
+        }
+        
+        # 2. Use Altair to plot the bars and explicitly map the 'Sentiment' category to a color
+        # This fixes the StreamlitColorLengthError
+        base = alt.Chart(sentiment_data).encode(
+            x=alt.X('Sentiment', sort=["Positive", "Neutral", "Negative"]),
+            y='Count'
         )
-        st.dataframe(sentiment_data, hide_index=True, use_container_width=True)
+        
+        chart = base.mark_bar().encode(
+            # Map the Sentiment column to color using the defined domain and range
+            color=alt.Color('Sentiment', scale=alt.Scale(domain=list(sentiment_colors.keys()), 
+                                                        range=list(sentiment_colors.values()))),
+            tooltip=['Sentiment', 'Count']
+        ).properties(
+            title="Sentence Counts by Sentiment"
+        )
+        
+        st.altair_chart(chart, use_container_width=True)
+
+        # Show raw counts in a table
+        st.dataframe(
+            sentiment_data.sort_values(by='Count', ascending=False), 
+            hide_index=True, 
+            use_container_width=True
+        )
 
 
         # --- Word Cloud ---
