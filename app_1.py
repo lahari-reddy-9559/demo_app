@@ -1,24 +1,8 @@
 """
-Dynamic AI Text Analysis - Streamlit App (single-file)
+Text Overanalysis Engine - Streamlit App (Sarcastic Edition)
 
-This script provides a professional, single-file Streamlit application for analyzing text,
-including sentiment breakdown, word cloud generation, and both rule-based (extractive)
-and machine learning (abstractive/generative) summarization.
-
-Key Features:
-- Professional, cross-mode (light/dark) compatible UI/UX.
-- Uses Altair/Pandas for correct, animated chart coloring.
-- Abstractive model options (t5-small, t5-base) are visible pre-analysis.
-- Robust dependency checking for NLTK and optional Hugging Face Transformers.
-
-Run Instructions (Requires Python 3.8+):
-1. Create a new file named 'app.py' and paste this entire code.
-2. Install necessary libraries (core requirements):
-   pip install streamlit pandas nltk wordcloud altair
-3. (OPTIONAL - FOR GENERATIVE SUMMARY) Install ML libraries:
-   pip install transformers torch sentencepiece tf-keras
-4. Run the app:
-   streamlit run app.py
+Focus: Minimal detail, unique, sarcastic UI style, dark/light mode compatible.
+Functionality: Sentiment, Word Cloud, Extractive/Generative Summaries.
 """
 
 # Safety: ensure headless matplotlib backend BEFORE importing matplotlib or other libs that import it
@@ -46,67 +30,47 @@ import io
 import nltk
 from nltk.stem import WordNetLemmatizer
 
-# Attempt to import VADER (NLTK sentiment analyzer)
+# --- Dependency Setup (Kept Minimal) ---
 try:
     from nltk.sentiment import SentimentIntensityAnalyzer
-    _VADER_POSSIBLE = True
+    SIA = SentimentIntensityAnalyzer()
 except Exception:
-    _VADER_POSSIBLE = False
+    SIA = None
 
-# Lazy transformers loader (for abstractive summarization)
 _TRANSFORMERS_AVAILABLE = False
 _TRANSFORMERS_IMPORT_ERROR = None
 
 def try_enable_transformers():
-    """
-    Try to import transformers and torch lazily.
-    Returns (available: bool, error_message: str|None).
-    """
+    """Checks for transformers and returns a brief, sarcastic error message if missing."""
     global _TRANSFORMERS_AVAILABLE, _TRANSFORMERS_IMPORT_ERROR
-    if _TRANSFORMERS_AVAILABLE:
-        return True, None
+    if _TRANSFORMERS_AVAILABLE: return True, None
     try:
-        from transformers import pipeline, AutoTokenizer  # noqa: F401
-        import torch  # noqa: F401
+        from transformers import pipeline, AutoTokenizer
+        import torch
         _TRANSFORMERS_AVAILABLE = True
         _TRANSFORMERS_IMPORT_ERROR = None
         return True, None
     except Exception as e:
         _TRANSFORMERS_AVAILABLE = False
-        _TRANSFORMERS_IMPORT_ERROR = e
         err_str = str(e)
         
-        # Specific Keras 3 check
-        if "Keras 3" in err_str or "tf-keras" in err_str:
-            hint = (
-                "Keras 3 incompatibility detected. Please install the compatibility package:\n\n"
-                "    `pip install tf-keras`\n\n"
-                "Then restart the application."
-            )
-            return False, f"Keras/TensorFlow Error: {err_str}\n\n{hint}"
-        
-        # General missing module check
-        if "No module named 'transformers'" in err_str or "'transformers'" in err_str:
-             return False, "Core ML Library Missing. To enable generative summaries, please run: `pip install transformers torch sentencepiece tf-keras`"
+        # Sarcastic, brief error message
+        if "No module named 'transformers'" in err_str:
+             return False, "You forgot to install the big libraries. Run: `pip install transformers torch sentencepiece tf-keras`"
+        if "Keras 3" in err_str:
+            return False, "Keras is having a mid-life crisis. Try: `pip install tf-keras`"
+        return False, f"Some Python nonsense broke it. ({err_str[:40]}...)"
 
-        return False, err_str
 
-# Ensure NLTK resources
-nltk_packages = ["punkt", "wordnet", "omw-1.4", "vader_lexicon", "stopwords"]
-for pkg in nltk_packages:
+# Ensure NLTK resources (silent download)
+for pkg in ["punkt", "wordnet", "omw-1.4", "vader_lexicon", "stopwords"]:
     try:
-        if pkg == "punkt":
-            nltk.data.find("tokenizers/punkt")
-        elif pkg == "vader_lexicon":
-            nltk.data.find("sentiment/vader_lexicon")
-        else:
-            nltk.data.find(f"corpora/{pkg}")
+        if pkg == "punkt": nltk.data.find("tokenizers/punkt")
+        elif pkg == "vader_lexicon": nltk.data.find("sentiment/vader_lexicon")
+        else: nltk.data.find(f"corpora/{pkg}")
     except LookupError:
-        try:
-            # Silence NLTK downloads to keep the console clean
-            nltk.download(pkg, quiet=True) 
-        except Exception:
-            pass
+        try: nltk.download(pkg, quiet=True) 
+        except Exception: pass
 
 lemmatizer = WordNetLemmatizer()
 try:
@@ -114,19 +78,7 @@ try:
 except Exception:
     STOPWORDS = set()
 
-# Initialize VADER if installed properly
-if _VADER_POSSIBLE:
-    try:
-        SIA = SentimentIntensityAnalyzer()
-        _VADER_AVAILABLE = True
-    except Exception:
-        SIA = None
-        _VADER_AVAILABLE = False
-else:
-    SIA = None
-    _VADER_AVAILABLE = False
-
-# Text utilities (functionality is preserved)
+# --- Core Logic Functions (Preserved) ---
 _SENT_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 def split_sentences(text: str) -> List[str]:
     sents = [s.strip() for s in _SENT_SPLIT_RE.split(text) if s.strip()]
@@ -136,22 +88,18 @@ def word_tokens(text: str) -> List[str]:
     return [w.lower() for w in re.findall(r"\w+", text)]
 
 def clean_text(text: str) -> str:
-    if not isinstance(text, str):
-        return ""
+    if not isinstance(text, str): return ""
     t = text.lower()
     t = t.translate(str.maketrans("", "", r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""))
-    toks = [w for w in t.split() if w and w not in STOPWORDS]
-    toks = [lemmatizer.lemmatize(w) for w in toks]
+    toks = [lemmatizer.lemmatize(w) for w in t.split() if w and w not in STOPWORDS]
     return " ".join(toks)
 
 def extractive_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max_sentences: int = 6) -> str:
     sentences = split_sentences(text)
-    if len(sentences) <= 1:
-        return text
+    if len(sentences) <= 1: return text
     freq = {}
     for sent in sentences:
-        for w in word_tokens(sent):
-            freq[w] = freq.get(w, 0) + 1
+        for w in word_tokens(sent): freq[w] = freq.get(w, 0) + 1
     scores = []
     for i, sent in enumerate(sentences):
         s = sum(freq.get(w, 0) for w in word_tokens(sent))
@@ -159,14 +107,12 @@ def extractive_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max
     keep = max(min_sentences, min(max_sentences, math.ceil(len(sentences) * ratio)))
     top = heapq.nlargest(keep, scores, key=lambda x: (x[0], -x[1]))
     top_sorted = sorted(top, key=lambda x: x[1])
-    reduced = " ".join([s for (_score, _i, s) in top_sorted])
-    return reduced
+    return " ".join([s for (_score, _i, s) in top_sorted])
 
 @st.cache_resource
 def make_abstractive_pipeline(model_name: str = "t5-small"):
     avail, err = try_enable_transformers()
-    if not avail:
-        raise RuntimeError(err or "transformers/torch not available")
+    if not avail: raise RuntimeError(err or "models not available")
     from transformers import pipeline
     import torch as _torch
     device = 0 if _torch.cuda.is_available() else -1
@@ -174,41 +120,38 @@ def make_abstractive_pipeline(model_name: str = "t5-small"):
 
 def trim_for_model(text: str, model_name: str, fraction_of_model_max: float = 0.9) -> str:
     avail, err = try_enable_transformers()
-    if not avail:
-        return text
+    if not avail: return text
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model_max = getattr(tokenizer, "model_max_length", 512) or 512
-    if model_max > 16384:
-        model_max = 1024
+    model_max = getattr(tokenizer, "model_max_length", 512) or 1024
     budget = max(64, int(model_max * fraction_of_model_max))
     sentences = split_sentences(text)
-    if not sentences:
-        return text
+    if not sentences: return text
+    
     def token_count(s: str) -> int:
-        ids = tokenizer.encode(s, add_special_tokens=False, truncation=False)
-        return len(ids)
+        return len(tokenizer.encode(s, add_special_tokens=False, truncation=False))
+    
     joined = " ".join(sentences)
-    if token_count(joined) <= budget:
-        return joined
-    left = 0
-    right = len(sentences) - 1
-    while left <= right:
-        candidate = sentences[:left + 1] + sentences[right:]
-        if token_count(" ".join(candidate)) <= budget:
-            return " ".join(candidate)
-        right -= 1
-        if right < left:
-            break
-    first = sentences[0]
-    ids = tokenizer.encode(first, add_special_tokens=False)
-    ids = ids[:max(1, budget)]
-    return tokenizer.decode(ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    if token_count(joined) <= budget: return joined
+    
+    # Simple trimming heuristic
+    trimmed_sents = []
+    current_tokens = 0
+    for sent in sentences:
+        sent_tokens = token_count(sent)
+        if current_tokens + sent_tokens + 2 <= budget: # +2 for delimiters
+            trimmed_sents.append(sent)
+            current_tokens += sent_tokens
+        elif current_tokens == 0:
+            # If the first sentence is too long, truncate it
+            ids = tokenizer.encode(sent, add_special_tokens=False)[:budget]
+            return tokenizer.decode(ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+
+    return " ".join(trimmed_sents)
 
 def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_length: int = 120, min_length: int = 20, use_reduced: bool = True) -> str:
     avail, err = try_enable_transformers()
-    if not avail:
-        raise RuntimeError(err or "transformers not available")
+    if not avail: raise RuntimeError(err or "models not available")
     reduced = extractive_reduce(text, ratio=0.25, min_sentences=1, max_sentences=6) if use_reduced else text
     trimmed = trim_for_model(reduced, model_name)
     summarizer = make_abstractive_pipeline(model_name)
@@ -222,52 +165,49 @@ def sentiment_label_for_sentence(sent: str) -> str:
     if SIA is not None:
         sc = SIA.polarity_scores(sent)
         compound = sc.get("compound", 0.0)
-        if compound >= 0.05:
-            return "positive"
-        elif compound <= -0.05:
-            return "negative"
-        else:
-            return "neutral"
-    else:
-        pos_words = {"good","great","happy","love","excellent","fantastic","amazing","best","wonderful","satisfied","pleasant"}
-        neg_words = {"bad","terrible","hate","awful","worst","poor","disappointed","problem","slow","broken","angry"}
+        if compound >= 0.05: return "positive"
+        elif compound <= -0.05: return "negative"
+        else: return "neutral"
+    else: # Heuristic fallback
+        pos_words = {"good","great","happy","love"}
+        neg_words = {"bad","terrible","hate","awful"}
         words = set(w.lower() for w in re.findall(r"\w+", sent))
         p = len(words & pos_words)
         n = len(words & neg_words)
-        if p > n:
-            return "positive"
-        if n > p:
-            return "negative"
+        if p > n: return "positive"
+        if n > p: return "negative"
         return "neutral"
 
-# --- UI/UX & Styling ---
+# --- SARCASTIC UI & STYLE ---
 
-st.set_page_config(page_title="Text Analysis Dashboard", layout="centered")
+st.set_page_config(page_title="Text Overanalysis", layout="centered")
 
-# Custom CSS for dark mode compatibility and refined aesthetic
+# Minimalist CSS with dark/light mode adaptability
 st.markdown(
     """
     <style>
-    /* Ensure colors adapt to Streamlit's theme and text is readable */
+    /* Use bold, generic font */
+    html, body, [class*="st-"] {
+        font-family: sans-serif !important;
+    }
     .stApp { 
         background-color: var(--background-color); 
         color: var(--text-color);
     }
-    /* Styling for the main result container */
+    /* Sarcastic result box */
     .result-box { 
         padding: 18px; 
-        border-radius: 10px; 
+        border-radius: 6px; 
         background: var(--secondary-background-color); 
-        /* Adjusted box-shadow for better visibility in both modes */
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(128, 128, 128, 0.1); 
-        margin-bottom: 25px;
-        transition: box-shadow 0.3s ease-in-out;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
+        margin-bottom: 20px;
+        border: 1px solid #ff4b4b; /* Subtle red border for "sarcasm" */
     }
     .stButton>button {
-        background-color: #1a73e8; 
+        background-color: #ff4b4b; /* Red button for drama */
         color: white; 
         font-weight: bold;
-        border-radius: 8px;
+        border-radius: 4px;
         border: none;
         padding: 10px 20px;
     }
@@ -275,184 +215,150 @@ st.markdown(
     """, unsafe_allow_html=True
 )
 
-st.title("💡 Text Insights Engine")
-st.markdown(
-    """
-    Analyze textual data using a combination of fast **rule-based methods** and optional **Transformer models** for deeper, generative insights.
-    """
-)
-st.info("📌 **Get Started:** Input your text, configure the summary options below, and run the analysis.")
+st.title("🤦 Text Overanalysis Tool")
+st.markdown("Honestly, it just counts words and gets feelings wrong. But sure, let's analyze it.")
+st.info("⚠️ **Rules:** Put text in. Press the button. Complain later.")
 
-# --- OPTIONS SECTION (Immediate selection) ---
-st.header("1. Configuration")
+# --- OPTIONS SECTION ---
+st.header("1. Settings (Boring but necessary)")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    ratio = st.slider("Extractive Summary Length Ratio", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
-    st.caption("Proportion of sentences kept for the rule-based summary.")
+    ratio = st.slider("Keep-Sentence Ratio", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
+    st.caption("How much summary you want to read.")
 
 with col2:
-    abstractive_opt = st.checkbox("Enable Generative Summary (ML-Based)", value=False)
-    st.caption("Check to use Transformer models (T5).")
+    abstractive_opt = st.checkbox("Generate Smarter Summary (If you installed the huge libraries)", value=False)
+    st.caption("Warning: Requires a functioning internet/PC.")
 
 with col3:
     if abstractive_opt:
-        abstr_model = st.selectbox("Generative Model Selection", ["t5-small", "t5-base"], index=0)
+        abstr_model = st.selectbox("Model Overkill", ["t5-small", "t5-base"], index=0)
     else:
         abstr_model = None
-        st.markdown("— *Disabled* —")
+        st.markdown("*Disabled: Too much work*")
 
-# --- INPUT SECTION (Inside the Form) ---
+# --- INPUT SECTION ---
 st.markdown("---")
 with st.form(key='analysis_form'):
-    st.header("2. Input Source")
+    st.header("2. Hand Over the Text")
 
     col_a, col_b = st.columns([3,1])
     
-    if 'default_text_input' not in st.session_state:
-        st.session_state.default_text_input = ""
+    if 'default_text_input' not in st.session_state: st.session_state.default_text_input = ""
 
     with col_a:
         text_input = st.text_area(
-            "Paste Text Here", 
+            "Dump Text Here", 
             height=260, 
-            placeholder="Enter the document or article text for analysis...",
+            placeholder="Go on, paste your masterpiece...",
             value=st.session_state.default_text_input
         )
 
     with col_b:
-        uploaded = st.file_uploader("Upload .txt File", type=["txt"])
-        st.markdown("---")
+        uploaded = st.file_uploader("Or Upload .txt (Easier)", type=["txt"])
         
         if uploaded is not None:
             try:
                 raw = uploaded.read()
-                try:
-                    file_text = raw.decode("utf-8")
-                except Exception:
-                    file_text = raw.decode("latin-1")
-                
+                file_text = raw.decode("utf-8", errors='ignore')
                 text_input = file_text
                 st.session_state.default_text_input = file_text
-                st.toast("✅ File loaded successfully! Click 'Run Analysis'.", icon='📄')
+                st.toast("✅ File loaded. Now hurry up and click the button.", icon='📄')
             except Exception as e:
-                st.error(f"❌ Failed to read uploaded file: {e}")
+                st.error(f"❌ File upload failed. Why is it always something? Error: {e}")
             
     # Form submission button
-    run = st.form_submit_button("🚀 Run Analysis")
+    run = st.form_submit_button("🛑 Stop Procrastinating, Analyze")
 
-# --- Analysis Logic and Results Display ---
+# --- RESULTS DISPLAY ---
 st.markdown("---")
 
 if run:
     if not text_input or not text_input.strip():
-        st.error("🚨 Please provide text in the input area or upload a file to begin analysis.")
+        st.error("🚨 Seriously? I can't analyze air.")
     else:
         st.session_state.default_text_input = text_input 
         
-        with st.spinner("Processing document..."):
+        with st.spinner("Judging your text..."):
             sentences = split_sentences(text_input)
             labels = [sentiment_label_for_sentence(s) for s in sentences]
             counts = {"positive": 0, "neutral": 0, "negative": 0}
-            for lab in labels:
-                counts[lab] = counts.get(lab, 0) + 1
-
-            # WordCloud generation
+            for lab in labels: counts[lab] = counts.get(lab, 0) + 1
             wc_text = clean_text(text_input)
-            if not wc_text.strip():
-                wc_text = "empty"
-            # Using 'Dark2' colormap for a professional, cross-mode palette
+            if not wc_text.strip(): wc_text = "empty"
             wc = WordCloud(width=800, height=400, background_color="white", colormap="Dark2").generate(wc_text)
 
         st.markdown('<div class="result-box">', unsafe_allow_html=True)
-        st.header("3. Analysis Results")
+        st.header("3. The Obvious Results")
         st.markdown("---")
         
-        # --- Sentiment Plot (Altair for cross-mode coloring) ---
-        st.subheader("Emotion and Polarity Distribution")
+        # --- Sentiment Plot ---
+        st.subheader("Sentiment: How Wrong Am I?")
         
         sentiment_data = pd.DataFrame({
             'Sentiment': ["Positive", "Neutral", "Negative"],
             'Count': [counts.get("positive", 0), counts.get("neutral", 0), counts.get("negative", 0)]
         })
         
-        # Define the colors: professional green/gray/red palette
         sentiment_colors = {
-            "Positive": "#4daf4a", # Green
-            "Neutral": "#6c757d",  # Gray
-            "Negative": "#e41a1c"  # Red
+            "Positive": "#4daf4a", 
+            "Neutral": "#6c757d",  
+            "Negative": "#e41a1c"
         }
         
         base = alt.Chart(sentiment_data).encode(
-            x=alt.X('Sentiment', sort=["Positive", "Neutral", "Negative"]),
-            y='Count'
+            x=alt.X('Sentiment', sort=["Positive", "Neutral", "Negative"]), y='Count'
         )
         
         chart = base.mark_bar().encode(
             color=alt.Color('Sentiment', scale=alt.Scale(domain=list(sentiment_colors.keys()), 
                                                         range=list(sentiment_colors.values()))),
             tooltip=['Sentiment', 'Count']
-        ).properties(
-            title="Sentence Counts by Sentiment Category"
-        )
+        ).properties(title="Emotional Breakdown (Probably Inaccurate)")
         
         st.altair_chart(chart, use_container_width=True)
-
         st.dataframe(sentiment_data.sort_values(by='Count', ascending=False), hide_index=True, use_container_width=True)
-
 
         # --- Word Cloud ---
         st.markdown("---")
-        st.subheader("Key Topic Visualization (Word Cloud)")
-        
-        col_wc_img, col_wc_info = st.columns([3, 1])
+        st.subheader("Word Cloud: The Hype Map")
         
         img_buf = io.BytesIO()
         plt.figure(figsize=(10,4))
-        plt.imshow(wc, interpolation='bilinear')
-        plt.axis("off")
-        plt.tight_layout(pad=0)
-        plt.savefig(img_buf, format="png", bbox_inches="tight")
-        plt.close()
+        plt.imshow(wc, interpolation='bilinear'); plt.axis("off"); plt.tight_layout(pad=0)
+        plt.savefig(img_buf, format="png", bbox_inches="tight"); plt.close()
         img_buf.seek(0)
-        
-        with col_wc_img:
-            st.image(img_buf, use_column_width=True)
-        
-        with col_wc_info:
-            st.markdown("The Word Cloud highlights **frequently occurring words** after removing common stop words.")
-            st.caption(f"Total Sentences: {len(sentences)}")
-            st.caption(f"Analyzed Tokens: {len(wc_text.split())}")
+        st.image(img_buf, use_column_width=True)
+        st.caption("These are the words you used most. Stop repeating yourself.")
 
-        
         # --- Summaries ---
         st.markdown("---")
-        st.subheader("Automated Summarization")
+        st.subheader("Summaries: Did you really need all that text?")
         
         # Extractive summary
-        st.markdown("##### 📝 Extractive Summary (Rule-Based)")
+        st.markdown("##### ✂️ Extractive Summary (The lazy way)")
         try:
             ext = extractive_reduce(text_input, ratio=ratio)
             st.success(ext)
         except Exception as e:
-            st.error(f"Extractive summary failed: {e}")
+            st.error(f"Failed. Couldn't even copy and paste correctly. Error: {e}")
 
         # Abstractive summary (if requested)
         if abstractive_opt:
-            st.markdown("##### ✨ Generative Summary (AI Model)")
+            st.markdown("##### 🧠 Generative Summary (The expensive way)")
             avail, err = try_enable_transformers()
             if not avail:
-                st.error(f"❌ **Generative Summary Unavailable**\n\n**Reason:** {err}")
-                st.caption("You must install the optional machine learning dependencies (transformers, torch, etc.) to use this feature.")
+                st.error(f"❌ **Failed.** Reason: {err}")
             else:
-                with st.spinner(f"Generating summary using **{abstr_model}**... (This step may require model download/initialization.)"):
+                with st.spinner(f"Waiting for **{abstr_model}** to wake up..."):
                     try:
-                        abstr = abstractive_summarize_text(text_input, model_name=abstr_model, max_length=120, min_length=20, use_reduced=True)
+                        abstr = abstractive_summarize_text(text_input, model_name=abstr_model)
                         st.success(abstr)
                     except Exception as e:
-                        st.error(f"❌ Generative summarization failed at runtime: {e}")
+                        st.error(f"❌ ML model choked. Maybe use a smaller text next time? Error: {e}")
                         
         st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.caption("Powered by Streamlit, NLTK, and Hugging Face. Thank you for using this analysis tool.")
+st.caption("Built for overthinkers. Now go outside.")
